@@ -1168,3 +1168,25 @@ of the combat data or shall we find another CZ?"
 6. **Moderation**: If community shares roleplay profiles, need content moderation? Offensive personalities?
 7. **Accessibility**: How to make this work for visually impaired players? Audio-only mode considerations?
 8. **Multiplayer Context**: How should AI behave during multicrew or wing operations? Defer to human commanders?
+
+---
+
+## TODO / Known Issues
+
+### Python 3.13 Compatibility
+**Status**: In Progress
+**Priority**: Medium
+
+The project currently specifies Python 3.12+ but has dependency compatibility issues with Python 3.13:
+- `ctranslate2==4.3.1` → Updated to `4.6.0` (Python 3.13 compatible)
+- `pygame==2.6.0` → Updated to `2.6.1` (has Python 3.13 wheels)
+- Other packages may need version updates or testing
+
+**Action Items**:
+1. Complete dependency audit for Python 3.13 compatibility
+2. Update all package versions in [requirements.txt](requirements.txt) to Python 3.13 compatible versions
+3. Test full installation and runtime on Python 3.13
+4. Update documentation to reflect Python 3.13 support once verified
+5. Consider using version ranges (>=) instead of pinned versions (==) for more flexibility
+
+**Workaround**: Use Python 3.12 until full Python 3.13 compatibility is verified.

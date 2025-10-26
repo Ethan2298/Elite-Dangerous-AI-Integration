@@ -45,7 +45,7 @@ PyAudio==0.2.14
 PyAutoGUI==0.9.54
 pydantic==2.9.1
 pydantic-core==2.23.3
-pygame==2.6.0
+pygame==2.6.1
 PyGetWindow==0.0.9
 pyinstaller==6.11.1
 pyinstaller-hooks-contrib==2024.10
