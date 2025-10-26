@@ -11,6 +11,7 @@ import traceback
 from EDMesg.CovasNext import ExternalChatNotification, ExternalBackgroundChatNotification
 from openai import OpenAI
 
+from lib.LLMProvider import create_llm_provider
 from lib.PluginHelper import PluginHelper
 from lib.Config import Config, assign_ptt, get_ed_appdata_path, get_ed_journals_path, get_system_info, load_config, save_config, update_config, update_event_config, validate_config, update_character, reset_game_events
 from lib.PluginManager import PluginManager
@@ -74,11 +75,14 @@ class Chat:
         self.copilot = EDCoPilot(self.config["edcopilot"], is_edcopilot_dominant=self.config["edcopilot_dominant"],
                             enabled_game_events=self.enabled_game_events, action_manager=self.action_manager, has_actions=self.config["edcopilot_actions"])
 
-        # gets API Key from config.json
-        self.llmClient = OpenAI(
-            base_url="https://api.openai.com/v1" if self.config["llm_endpoint"] == '' else self.config["llm_endpoint"],
+        # Initialize LLM provider based on config
+        log("debug", f"Initializing LLM provider: {self.config['llm_provider']}")
+        self.llmClient = create_llm_provider(
+            provider_type=self.config["llm_provider"],
             api_key=self.config["api_key"] if self.config["llm_api_key"] == '' else self.config["llm_api_key"],
+            endpoint=self.config["llm_endpoint"]
         )
+        log("debug", f"LLM provider initialized: {self.llmClient.get_provider_name()}")
         
         # vision
         self.visionClient: OpenAI | None = None
@@ -145,7 +149,7 @@ class Chat:
         self.event_manager.register_sideeffect(self.on_event)
         self.event_manager.register_sideeffect(self.assistant.on_event)
         
-        self.plugin_helper = PluginHelper(self.prompt_generator, config, self.action_manager, self.event_manager, self.llmClient, self.config["llm_model_name"], self.visionClient, self.config["vision_model_name"], self.system_database, self.ed_keys, self.assistant)
+        self.plugin_helper = PluginHelper(self.prompt_generator, config, self.action_manager, self.event_manager, self.llmClient.get_openai_client(), self.config["llm_model_name"], self.visionClient, self.config["vision_model_name"], self.system_database, self.ed_keys, self.assistant)
         log("debug", "Plugin helper is ready...")
 
         # Execute plugin helper ready hooks
@@ -267,7 +271,7 @@ class Chat:
             register_actions(
                 self.action_manager,
                 self.event_manager,
-                self.llmClient,
+                self.llmClient.get_openai_client(),
                 self.config["llm_model_name"],
                 self.visionClient,
                 self.config["vision_model_name"],

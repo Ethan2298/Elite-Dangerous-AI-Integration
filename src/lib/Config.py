@@ -377,7 +377,7 @@ class Config(TypedDict):
     commander_name: str
     characters: List[Character]
     active_character_index: int
-    llm_provider: Literal['openai', 'openrouter','google-ai-studio', 'custom', 'local-ai-server']
+    llm_provider: Literal['openai', 'ollama', 'lm-studio', 'text-gen-webui', 'vllm', 'openrouter','google-ai-studio', 'custom', 'local-ai-server']
     llm_model_name: str
     llm_temperature: float
     vision_provider: Literal['openai', 'google-ai-studio', 'custom', 'none']
@@ -1154,6 +1154,30 @@ def update_config(config: Config, data: dict) -> Config:
             data["llm_endpoint"] = "https://api.openai.com/v1"
             data["llm_model_name"] = "gpt-4.1-mini"
             data["llm_api_key"] = ""
+            data["tools_var"] = True
+
+        elif data["llm_provider"] == "ollama":
+            data["llm_endpoint"] = "http://localhost:11434/v1"
+            data["llm_model_name"] = "llama3.1:8b"
+            data["llm_api_key"] = "ollama"
+            data["tools_var"] = True
+
+        elif data["llm_provider"] == "lm-studio":
+            data["llm_endpoint"] = "http://localhost:1234/v1"
+            data["llm_model_name"] = "local-model"
+            data["llm_api_key"] = "lm-studio"
+            data["tools_var"] = True
+
+        elif data["llm_provider"] == "text-gen-webui":
+            data["llm_endpoint"] = "http://localhost:5000/v1"
+            data["llm_model_name"] = "local-model"
+            data["llm_api_key"] = "text-gen-webui"
+            data["tools_var"] = True
+
+        elif data["llm_provider"] == "vllm":
+            data["llm_endpoint"] = "http://localhost:8000/v1"
+            data["llm_model_name"] = "local-model"
+            data["llm_api_key"] = "vllm"
             data["tools_var"] = True
 
         elif data["llm_provider"] == "openrouter":

@@ -11,6 +11,7 @@ from .ActionManager import ActionManager
 from .PromptGenerator import PromptGenerator
 from .TTS import TTS
 from .EDCoPilot import EDCoPilot
+from .LLMProvider import LLMProvider
 from openai import APIStatusError, BadRequestError, OpenAI, RateLimitError
 from typing import Any,  Callable, final
 from threading import Thread
@@ -18,7 +19,7 @@ from .actions.Actions import set_speed, fire_weapons
 
 @final
 class Assistant:
-    def __init__(self, config: Config, enabled_game_events: list[str], event_manager: EventManager, action_manager: ActionManager, llmClient: OpenAI, tts: TTS, prompt_generator: PromptGenerator, copilot: EDCoPilot, disabled_game_events: list[str] | None = None):
+    def __init__(self, config: Config, enabled_game_events: list[str], event_manager: EventManager, action_manager: ActionManager, llmClient: LLMProvider, tts: TTS, prompt_generator: PromptGenerator, copilot: EDCoPilot, disabled_game_events: list[str] | None = None):
         self.config = config
         self.enabled_game_events = enabled_game_events
         self.disabled_game_events = disabled_game_events if disabled_game_events is not None else []
@@ -106,7 +107,7 @@ class Assistant:
         
         # confirm the action by sending the user input to the model without any context
 
-        completion = self.llmClient.chat.completions.create(
+        completion = self.llmClient.chat_completion(
             model=self.config["llm_model_name"],
             messages=[prompt[0]] + [{"role": "user", "content": user_input}],
             temperature=0,
@@ -184,12 +185,12 @@ class Assistant:
                     llm_params["reasoning_effort"] = "minimal"
                     
                 try:
-                    response = self.llmClient.chat.completions.with_raw_response.create(  # pyright: ignore[reportCallIssue]
+                    response = self.llmClient.chat_completion_with_raw_response(
                         model=self.config["llm_model_name"],
                         messages=prompt,
                         temperature=self.config["llm_temperature"],
-                        tools=tool_list,  # pyright: ignore[reportArgumentType]
-                        **llm_params,  # pyright: ignore[reportArgumentType]
+                        tools=tool_list,
+                        **llm_params,
                     )
                     end_time = time()
                     log('debug', 'Response time LLM', end_time - start_time)
