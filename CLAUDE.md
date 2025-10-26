@@ -239,6 +239,56 @@ Before executing actions:
 - **Path handling**: Use `os.path.join()` and handle Windows backslashes
 - **Electron builder**: Different targets per platform (MSI vs Flatpak)
 
+## Performance Optimization
+
+### Latency Optimization Strategy
+
+**Goal**: Reduce response times from current 1.0-2.5s to <1s for 90% of interactions
+
+**Current Pipeline Bottlenecks** ([docs/latency-optimization-plan.md](docs/latency-optimization-plan.md)):
+- STT: 200-500ms
+- Prompt Generation: 50-100ms
+- LLM Call: 300-800ms (blocking wait for complete response)
+- TTS Call: 200-400ms
+- **Total**: 1000-2500ms
+
+**Five-Phase Optimization Plan**:
+
+1. **Response Caching** (Week 1-2, -600ms for 40% of requests)
+   - Pre-generate audio for common phrases ("Hardpoints deployed", "Setting speed to zero")
+   - Cache hit = instant playback (~50ms vs 950ms)
+   - **Lowest complexity, highest ROI** - implement first
+   - Learns which responses are common per player
+
+2. **LLM→TTS Streaming** (Week 3-4, -400ms for all responses)
+   - Currently waits for entire LLM response before speaking (see [Assistant.py:243](src/lib/Assistant.py#L243))
+   - Stream LLM tokens to TTS sentence-by-sentence in real-time
+   - First words spoken while AI still thinking
+   - Perceived latency: 500-800ms vs 1000-1500ms
+   - Requires adding `chat_completion_stream()` to LLMProvider interface
+
+3. **Action Fast-Path** (Week 5-6, -150ms for 30% of actions)
+   - Skip expensive prompt generation for cached actions
+   - Action cache already exists ([Assistant.py:174](src/lib/Assistant.py#L174))
+   - Add confirmation phrase cache to bypass LLM entirely
+   - Cost: 5-10ms vs 150-250ms
+
+4. **Parallel Processing** (Month 2, -100ms)
+   - Prepare context while STT runs (overlap operations)
+   - Requires async refactor (higher complexity)
+
+5. **Speculative Execution** (Month 3+, -200ms, experimental)
+   - Predict likely responses during speech using partial STT results
+   - Pre-warm action cache for high-confidence predictions
+   - Risk of wasted work, needs careful tuning
+
+**Target Performance After Phases 1-3**:
+- P50: 400ms (currently 1200ms)
+- P90: 900ms (currently 2000ms)
+- 40%+ instant responses from cache
+
+**Critical for NEXUS Vision**: The "Speed First" principle requires sub-1-second responses to maintain immersion. This optimization strategy directly addresses that core requirement.
+
 ## Key Dependencies
 
 **Python**:
