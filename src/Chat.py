@@ -109,8 +109,33 @@ class Chat:
             )
             
         tts_provider = 'none' if self.config["edcopilot"] and self.config["edcopilot_dominant"] else self.config["tts_provider"]
-        self.tts = TTS(openai_client=self.ttsClient, provider=tts_provider, model=self.config["tts_model_name"], voice=self.character["tts_voice"], voice_instructions=self.character["tts_prompt"], speed=self.character["tts_speed"], output_device=self.config["output_device_name"])
+        enable_response_cache = self.config.get("enable_response_cache", True)  # Enable by default
+        self.tts = TTS(openai_client=self.ttsClient, provider=tts_provider, model=self.config["tts_model_name"], voice=self.character["tts_voice"], voice_instructions=self.character["tts_prompt"], speed=self.character["tts_speed"], output_device=self.config["output_device_name"], enable_cache=enable_response_cache)
         self.stt = STT(openai_client=self.sttClient, provider=self.config["stt_provider"], input_device_name=self.config["input_device_name"], model=self.config["stt_model_name"], language=self.config["stt_language"], custom_prompt=self.config["stt_custom_prompt"], required_word=self.config["stt_required_word"])
+
+        # Warm TTS cache with common action responses
+        if enable_response_cache:
+            common_phrases = [
+                "Hardpoints deployed",
+                "Hardpoints retracted",
+                "Setting speed to zero",
+                "Setting speed to 50 percent",
+                "Setting speed to 75 percent",
+                "Setting speed to 100 percent",
+                "Shields up",
+                "Cargo scoop deployed",
+                "Cargo scoop retracted",
+                "Landing gear down",
+                "Landing gear up",
+                "Frameshift drive charging",
+                "Jump complete",
+                "Lights on",
+                "Lights off",
+                "Understood",
+                "Affirmative",
+                "Negative"
+            ]
+            self.tts.warm_cache(common_phrases)
 
         log("debug", "Initializing SystemDatabase...")
         self.system_database = SystemDatabase()
@@ -292,8 +317,16 @@ class Chat:
             show_chat_message('info', "Actions ready.")
 
 
+        # Log cache stats
+        if enable_response_cache:
+            stats = self.tts.get_cache_stats()
+            log('info', f'Response cache initialized: {stats.get("cached_items", 0)} items loaded')
+
         # Cue the user that we're ready to go.
         show_chat_message('info', "System Ready.")
+
+        # Track cache stats periodically
+        cache_stats_counter = 0
 
         while True:
             try:
@@ -347,6 +380,15 @@ class Chat:
                 if self.assistant.reply_pending and not self.assistant.is_replying and not self.stt.recording:
                     all_events, projected_states = self.event_manager.get_current_state()
                     self.assistant.reply(all_events, projected_states)
+
+                # Log cache stats every 1000 iterations (~10 minutes)
+                if enable_response_cache:
+                    cache_stats_counter += 1
+                    if cache_stats_counter >= 1000:
+                        stats = self.tts.get_cache_stats()
+                        if stats.get('hits', 0) + stats.get('misses', 0) > 0:
+                            log('info', f'Response cache stats: {stats["hit_rate_percent"]}% hit rate, saved {stats["total_saved_seconds"]}s, {stats["cached_items"]} items')
+                        cache_stats_counter = 0
                     
                 # Infinite loops are bad for processors, must sleep.
                 sleep(0.1)

@@ -13,6 +13,7 @@ import strip_markdown
 from num2words import num2words
 
 from .Logger import log, show_chat_message
+from .ResponseCache import ResponseCache
 
 
 @final
@@ -73,7 +74,7 @@ class Mp3Stream(miniaudio.StreamableSource):
 
 @final
 class TTS:
-    def __init__(self, openai_client: Optional[openai.OpenAI] = None, provider: Literal['openai', 'edge-tts', 'custom', 'none', 'local-ai-server'] | str ='openai', voice="nova", voice_instructions="", model='tts-1',  speed: Union[str,float]=1, output_device: Optional[str] = None):
+    def __init__(self, openai_client: Optional[openai.OpenAI] = None, provider: Literal['openai', 'edge-tts', 'custom', 'none', 'local-ai-server'] | str ='openai', voice="nova", voice_instructions="", model='tts-1',  speed: Union[str,float]=1, output_device: Optional[str] = None, enable_cache: bool = True):
         self.openai_client = openai_client
         self.provider = provider
         self.model = model
@@ -81,7 +82,7 @@ class TTS:
         self.voice_instructions = voice_instructions
 
         self.speed = speed
-        
+
         self.p = pyaudio.PyAudio()
         self.output_device = output_device
         self.read_queue = queue.Queue()
@@ -91,6 +92,9 @@ class TTS:
         self.output_format = pyaudio.paInt16
         self.frames_per_buffer = 1024
         self.sample_size = self.p.get_sample_size(self.output_format)
+
+        # Response cache for instant playback of common phrases
+        self.cache = ResponseCache() if enable_cache else None
 
         thread = threading.Thread(target=self._playback_thread)
         thread.daemon = True
@@ -177,13 +181,28 @@ class TTS:
             stream.stop_stream()
 
     def _stream_audio(self, text):
+        # Check cache first (instant playback)
+        if self.cache:
+            cached_audio = self.cache.get_cached_audio(text, self.voice, float(self.speed), self.provider)
+            if cached_audio:
+                # Stream cached audio in chunks
+                chunk_size = 1024
+                for i in range(0, len(cached_audio), chunk_size):
+                    yield cached_audio[i:i+chunk_size]
+                return  # Done - cache hit!
+
+        # Cache miss - generate audio and cache it
+        generated_audio = bytearray()
+
         if self.provider == 'none':
             word_count = len(text.split())
             words_per_minute = 150 * float(self.speed)
             audio_duration = word_count / words_per_minute * 60
             # generate silent audio for the duration of the text
             for _ in range(int(audio_duration * 24_000 / 1024)):
-                yield b"\x00" * 1024
+                chunk = b"\x00" * 1024
+                generated_audio.extend(chunk)
+                yield chunk
         elif self.provider == "edge-tts":
             rate = f"+{int((float(self.speed) - 1) * 100)}%" if float(self.speed) > 1 else f"-{int((1 - float(self.speed)) * 100)}%"
             response = edge_tts.Communicate(text, voice=self.voice, rate=rate)
@@ -197,7 +216,10 @@ class TTS:
             )
 
             for i in pcm_stream:
-                yield i.tobytes()
+                chunk = i.tobytes()
+                generated_audio.extend(chunk)
+                yield chunk
+
         elif self.openai_client:
             try:
                 with self.openai_client.audio.speech.with_streaming_response.create(
@@ -210,6 +232,7 @@ class TTS:
                         speed=float(self.speed)
                 ) as response:
                     for chunk in response.iter_bytes(1024):
+                        generated_audio.extend(chunk)
                         yield chunk
             except openai.APIStatusError as e:
                 log("debug", "TTS error request:", e.request.method, e.request.url, e.request.headers, e.request.read().decode('utf-8', errors='replace'))
@@ -224,6 +247,10 @@ class TTS:
                 show_chat_message('error', f'TTS {e.response.reason_phrase}:', message)
         else:
             raise ValueError('No TTS client provided')
+
+        # Cache the generated audio for future use
+        if self.cache and len(generated_audio) > 0:
+            self.cache.cache_audio(text, self.voice, float(self.speed), self.provider, bytes(generated_audio))
 
     def _number_to_text(self, match: re.Match[str]):
         """Converts numbers like 100,203.12 to one hundred thousand two hundred three point one two"""
@@ -250,6 +277,19 @@ class TTS:
     def wait_for_completion(self):
         while self.get_is_playing():
             sleep(0.2)
+
+    def get_cache_stats(self) -> dict:
+        """Get response cache performance statistics"""
+        if self.cache:
+            return self.cache.get_stats()
+        return {'enabled': False}
+
+    def warm_cache(self, common_phrases: list[str]):
+        """Pre-mark common phrases for caching (they'll be cached on first use)"""
+        if self.cache:
+            phrases_with_settings = [(phrase, self.voice, float(self.speed), self.provider) for phrase in common_phrases]
+            self.cache.warm_cache(phrases_with_settings)
+            log('info', f'Warmed cache with {len(common_phrases)} common phrases')
 
     def quit(self):
         pass
